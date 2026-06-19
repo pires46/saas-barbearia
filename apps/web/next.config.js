@@ -2,7 +2,7 @@ const path = require("path");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
+  ...(process.env.VERCEL ? {} : { output: "standalone" }),
   outputFileTracingRoot: path.join(__dirname, "../../"),
   transpilePackages: ["@saas-barbearia/database", "@saas-barbearia/shared"],
   images: {

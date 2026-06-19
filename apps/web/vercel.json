@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd ../.. && npm install -w @saas-barbearia/web -w @saas-barbearia/database -w @saas-barbearia/shared",
+  "buildCommand": "cd ../.. && node scripts/prepare-prod-schema.js && npm run db:generate && npm run build -w @saas-barbearia/web",
+  "framework": "nextjs"
+}

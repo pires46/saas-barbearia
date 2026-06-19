@@ -62,14 +62,14 @@ async function main() {
     }),
   ]);
 
-  const adminEmail = process.env.SEED_ADMIN_EMAIL || "admin@barbersaas.com.br";
-  const adminPassword =
-    process.env.SEED_ADMIN_PASSWORD || crypto.randomBytes(8).toString("hex");
+  const adminEmail = process.env.SEED_ADMIN_EMAIL || "guhgames46@gmail.com";
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+  const plainPassword = adminPassword || crypto.randomBytes(8).toString("hex");
+  const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
   const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
 
   if (!existingAdmin) {
-    const hashedPassword = await bcrypt.hash(adminPassword, 10);
     await prisma.user.create({
       data: {
         email: adminEmail,
@@ -81,10 +81,24 @@ async function main() {
 
     console.log("✅ Super Admin criado:");
     console.log(`   E-mail: ${adminEmail}`);
-    console.log(`   Senha:  ${adminPassword}`);
-    console.log("   ⚠️  Guarde esta senha. Altere após o primeiro acesso.");
+    if (adminPassword) {
+      console.log("   Senha:  (definida em SEED_ADMIN_PASSWORD)");
+    } else {
+      console.log(`   Senha:  ${plainPassword}`);
+      console.log("   ⚠️  Guarde esta senha. Altere após o primeiro acesso.");
+    }
+  } else if (adminPassword) {
+    await prisma.user.update({
+      where: { email: adminEmail },
+      data: {
+        password: hashedPassword,
+        role: "SUPER_ADMIN",
+        name: "Administrador SaaS",
+      },
+    });
+    console.log(`✅ Super Admin atualizado: ${adminEmail}`);
   } else {
-    console.log("✅ Planos verificados. Super Admin já existe.");
+    console.log(`✅ Planos verificados. Super Admin já existe: ${adminEmail}`);
   }
 
   const tenantCount = await prisma.tenant.count();
