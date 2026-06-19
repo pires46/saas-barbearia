@@ -1,0 +1,151 @@
+# BarberSaaS — deploy completo na VPS
+# Uso: cp .env.production.example .env.production && docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+
+name: barbersaas
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: barbersaas_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-barbersaas}
+      POSTGRES_USER: ${POSTGRES_USER:-barbersaas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env.production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-barbersaas} -d ${POSTGRES_DB:-barbersaas}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - barbersaas
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: barbersaas_web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-barbersaas}
+      POSTGRES_DB: ${POSTGRES_DB:-barbersaas}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-barbersaas}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-barbersaas}
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env.production}
+      CRON_SECRET: ${CRON_SECRET:?Defina CRON_SECRET no .env.production}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?Defina NEXT_PUBLIC_APP_URL no .env.production}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-http://evolution-api:8080}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-barbersaas-evolution-key-change-me}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-BarberSaaS <noreply@seudominio.com.br>}
+      ASAAS_API_KEY: ${ASAAS_API_KEY:-}
+      ASAAS_SANDBOX: ${ASAAS_SANDBOX:-false}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:-}
+      SEED_ON_START: ${SEED_ON_START:-false}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@barbersaas.com.br}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    networks:
+      - barbersaas
+
+  evolution-postgres:
+    image: postgres:15-alpine
+    container_name: barbersaas_evolution_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${EVOLUTION_POSTGRES_DB:-evolution_api}
+      POSTGRES_USER: ${EVOLUTION_POSTGRES_USER:-evolution}
+      POSTGRES_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD:-evolution_pass}
+    volumes:
+      - evolution_postgres:/var/lib/postgresql/data
+    networks:
+      - barbersaas
+
+  evolution-redis:
+    image: redis:7-alpine
+    container_name: barbersaas_evolution_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - evolution_redis:/data
+    networks:
+      - barbersaas
+
+  evolution-api:
+    image: evoapicloud/evolution-api:latest
+    container_name: barbersaas_evolution_api
+    restart: unless-stopped
+    depends_on:
+      - evolution-redis
+      - evolution-postgres
+    ports:
+      - "${EVOLUTION_PORT:-8080}:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+    environment:
+      SERVER_NAME: evolution
+      SERVER_TYPE: http
+      SERVER_PORT: 8080
+      SERVER_URL: ${EVOLUTION_PUBLIC_URL:-http://localhost:8080}
+      SERVER_DISABLE_DOCS: "false"
+      SERVER_DISABLE_MANAGER: "false"
+      CORS_ORIGIN: "*"
+      CORS_METHODS: POST,GET,PUT,DELETE
+      CORS_CREDENTIALS: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${EVOLUTION_POSTGRES_USER:-evolution}:${EVOLUTION_POSTGRES_PASSWORD:-evolution_pass}@evolution-postgres:5432/${EVOLUTION_POSTGRES_DB:-evolution_api}
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_barbersaas
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      DATABASE_SAVE_DATA_HISTORIC: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution-redis:6379
+      CACHE_REDIS_PREFIX_KEY: evolution-cache
+      CACHE_REDIS_TTL: "604800"
+      CACHE_REDIS_SAVE_INSTANCES: "true"
+      CACHE_LOCAL_ENABLED: "true"
+      CACHE_LOCAL_TTL: "86400"
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-barbersaas-evolution-key-change-me}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      LOG_LEVEL: ERROR,WARN,INFO
+      LOG_COLOR: "true"
+      LOG_BAILEYS: error
+      DEL_INSTANCE: "false"
+      DEL_TEMP_INSTANCES: "true"
+      LANGUAGE: pt-BR
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      WEBSOCKET_ENABLED: "true"
+      WEBSOCKET_GLOBAL_EVENTS: "true"
+      CONFIG_SESSION_PHONE_CLIENT: BarberSaaS
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      QRCODE_LIMIT: "30"
+      QRCODE_COLOR: "#e94560"
+      TELEMETRY_ENABLED: "false"
+    networks:
+      - barbersaas
+
+volumes:
+  postgres_data:
+  evolution_postgres:
+  evolution_redis:
+  evolution_instances:
+
+networks:
+  barbersaas:
+    driver: bridge

@@ -1,0 +1,32 @@
+{
+  "name": "saas-barbearia",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "npm run web",
+    "evolution:up": "docker compose -f services/evolution-api/docker-compose.yml up -d",
+    "evolution:down": "docker compose -f services/evolution-api/docker-compose.yml down",
+    "evolution:logs": "docker compose -f services/evolution-api/docker-compose.yml logs -f evolution-api",
+    "docker:prod:up": "docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build",
+    "docker:prod:down": "docker compose -f docker-compose.prod.yml --env-file .env.production down",
+    "docker:prod:logs": "docker compose -f docker-compose.prod.yml --env-file .env.production logs -f web",
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "db:generate": "npm run generate -w @saas-barbearia/database",
+    "db:push": "npm run push -w @saas-barbearia/database",
+    "db:seed": "npm run seed -w @saas-barbearia/database",
+    "db:studio": "npm run studio -w @saas-barbearia/database",
+    "web": "npm run db:generate && npm run dev -w @saas-barbearia/web",
+    "mobile": "npm run start -w @saas-barbearia/mobile"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,664 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== SAAS MULTI-TENANT ====================
+
+model Plan {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  price       Float
+  maxBarbers  Int      @default(3)
+  maxClients  Int      @default(500)
+  features    String   @default("[]") // JSON array
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenants       Tenant[]
+  subscriptions Subscription[]
+}
+
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  email       String
+  phone       String?
+  document    String?  // CNPJ
+  logo        String?
+  coverImage  String?
+  description String?
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?
+  instagram   String?
+  spotifyUrl  String?
+  active      Boolean  @default(true)
+  blocked     Boolean  @default(false) // inadimplência
+  planId      String
+  plan        Plan     @relation(fields: [planId], references: [id])
+  asaasCustomerId String?
+  onboardingDone  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users              User[]
+  subscriptions      Subscription[]
+  invoices           Invoice[]
+  businessHours      BusinessHour[]
+  services           Service[]
+  employees          Employee[]
+  clients            Client[]
+  appointments       Appointment[]
+  waitlist           WaitlistEntry[]
+  blockedSlots       BlockedSlot[]
+  products           Product[]
+  inventoryMovements InventoryMovement[]
+  sales              Sale[]
+  financialEntries   FinancialEntry[]
+  whatsappMessages   WhatsappMessage[]
+  whatsappCampaigns  WhatsappCampaign[]
+  loyaltyProgram     LoyaltyProgram?
+  loyaltyTransactions LoyaltyTransaction[]
+  clientSubscriptions ClientSubscription[]
+  reviews            Review[]
+  settings           TenantSettings?
+}
+
+model TenantSettings {
+  id                    String        @id @default(cuid())
+  tenantId              String        @unique
+  tenant                Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  whatsappEnabled       Boolean       @default(false)
+  whatsappMode          WhatsappMode  @default(SHOP)
+  whatsappApiKey        String?
+  whatsappPhone         String?
+  whatsappInstance      String?
+  confirmBooking        Boolean @default(true)
+  reminder24h           Boolean @default(true)
+  reminder2h            Boolean @default(true)
+  thankYouMessage       Boolean @default(true)
+  aiPredictions         Boolean @default(true)
+  aiPromotions          Boolean @default(true)
+  qrCheckin             Boolean @default(true)
+  voiceCommands         Boolean @default(false)
+  primaryColor          String  @default("#1a1a2e")
+  secondaryColor        String  @default("#e94560")
+}
+
+model Subscription {
+  id              String             @id @default(cuid())
+  tenantId        String
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId          String
+  plan            Plan               @relation(fields: [planId], references: [id])
+  status          SubscriptionStatus @default(ACTIVE)
+  paymentMethod   PaymentMethodType  @default(PIX)
+  startDate       DateTime           @default(now())
+  endDate         DateTime?
+  nextBillingDate DateTime?
+  asaasSubscriptionId String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  invoices Invoice[]
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  tenantId       String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+  amount         Float
+  status         InvoiceStatus @default(PENDING)
+  dueDate        DateTime
+  paidAt         DateTime?
+  paymentMethod  PaymentMethodType?
+  pixCode        String?
+  boletoUrl      String?
+  asaasPaymentId String?
+  paymentUrl     String?
+  createdAt      DateTime      @default(now())
+}
+
+// ==================== AUTH & USERS ====================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(BARBER)
+  avatar    String?
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId String? @unique
+  employee  Employee? @relation(fields: [employeeId], references: [id])
+  clientId  String?  @unique
+  client    Client?  @relation(fields: [clientId], references: [id])
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  passwordResetTokens PasswordResetToken[]
+  auditLogs           AuditLog[]
+}
+
+// ==================== BUSINESS HOURS ====================
+
+model BusinessHour {
+  id        String  @id @default(cuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dayOfWeek Int     // 0=Sunday, 6=Saturday
+  openTime  String  // "09:00"
+  closeTime String  // "19:00"
+  closed    Boolean @default(false)
+}
+
+model EmployeeSchedule {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int
+  startTime  String
+  endTime    String
+  off        Boolean  @default(false)
+}
+
+model EmployeeAbsence {
+  id         String      @id @default(cuid())
+  employeeId String
+  employee   Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type       AbsenceType @default(DAY_OFF)
+  startDate  DateTime
+  endDate    DateTime
+  reason     String?
+}
+
+model BlockedSlot {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+  startTime  DateTime
+  endTime    DateTime
+  reason     String?
+}
+
+// ==================== SERVICES ====================
+
+model Service {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  category    ServiceCategory @default(OTHER)
+  price       Float
+  duration    Int      // minutes
+  commission  Float    @default(0) // percentage
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  appointments Appointment[]
+  saleItems    SaleItem[]
+  employees    EmployeeService[]
+}
+
+model EmployeeService {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  serviceId  String
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, serviceId])
+}
+
+// ==================== EMPLOYEES ====================
+
+model Employee {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  cpf             String?
+  phone           String?
+  email           String?
+  role            EmployeeRole @default(BARBER)
+  photo           String?
+  bio             String?
+  serviceCommission Float  @default(50) // percentage
+  productCommission Float  @default(10)
+  active          Boolean  @default(true)
+  rating          Float    @default(0)
+  totalReviews    Int      @default(0)
+  whatsappEnabled Boolean  @default(false)
+  whatsappInstance String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User?
+  schedules       EmployeeSchedule[]
+  absences        EmployeeAbsence[]
+  blockedSlots    BlockedSlot[]
+  services        EmployeeService[]
+  appointments    Appointment[]
+  saleItems       SaleItem[]
+}
+
+// ==================== CLIENTS ====================
+
+model Client {
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  phone       String
+  email       String?
+  birthDate   DateTime?
+  photo       String?
+  notes       String?
+  vip         Boolean   @default(false)
+  totalSpent  Float     @default(0)
+  visitCount  Int       @default(0)
+  lastVisit   DateTime?
+  loyaltyPoints Int     @default(0)
+  consentLgpd   Boolean @default(false)
+  consentAt     DateTime?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user              User?
+  appointments      Appointment[]
+  waitlist          WaitlistEntry[]
+  sales             Sale[]
+  loyaltyTransactions LoyaltyTransaction[]
+  clientSubscription ClientSubscription?
+  reviews           Review[]
+}
+
+// ==================== APPOINTMENTS ====================
+
+model Appointment {
+  id          String            @id @default(cuid())
+  tenantId    String
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientId    String
+  client      Client            @relation(fields: [clientId], references: [id])
+  employeeId  String
+  employee    Employee          @relation(fields: [employeeId], references: [id])
+  serviceId   String
+  service     Service           @relation(fields: [serviceId], references: [id])
+  startTime   DateTime
+  endTime     DateTime
+  status      AppointmentStatus @default(SCHEDULED)
+  notes       String?
+  checkedIn   Boolean           @default(false)
+  checkedInAt DateTime?
+  qrCode      String?
+  reminder24hSent Boolean @default(false)
+  reminder2hSent  Boolean @default(false)
+  thankYouSent    Boolean @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  sale    Sale?
+  review  Review?
+}
+
+model WaitlistEntry {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id])
+  serviceId  String?
+  employeeId String?
+  preferredDate DateTime?
+  notes      String?
+  notified   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+// ==================== INVENTORY ====================
+
+model Product {
+  id          String          @id @default(cuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  category    ProductCategory @default(OTHER)
+  sku         String?
+  price       Float
+  cost        Float           @default(0)
+  stock       Int             @default(0)
+  minStock    Int             @default(5)
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  movements InventoryMovement[]
+  saleItems SaleItem[]
+}
+
+model InventoryMovement {
+  id        String       @id @default(cuid())
+  tenantId  String
+  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product      @relation(fields: [productId], references: [id])
+  type      MovementType
+  quantity  Int
+  reason    String?
+  createdAt DateTime     @default(now())
+}
+
+// ==================== SALES / POS ====================
+
+model Sale {
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientId      String?
+  client        Client?       @relation(fields: [clientId], references: [id])
+  appointmentId String?       @unique
+  appointment   Appointment?  @relation(fields: [appointmentId], references: [id])
+  subtotal      Float
+  discount      Float         @default(0)
+  total         Float
+  paymentMethod PaymentMethodType
+  status        SaleStatus    @default(COMPLETED)
+  notes         String?
+  receiptSent   Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+
+  items SaleItem[]
+}
+
+model SaleItem {
+  id         String   @id @default(cuid())
+  saleId     String
+  sale       Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  serviceId  String?
+  service    Service? @relation(fields: [serviceId], references: [id])
+  productId  String?
+  product    Product? @relation(fields: [productId], references: [id])
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+  name       String
+  quantity   Int      @default(1)
+  unitPrice  Float
+  total      Float
+  commission Float    @default(0)
+}
+
+// ==================== FINANCE ====================
+
+model FinancialEntry {
+  id          String        @id @default(cuid())
+  tenantId    String
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type        EntryType
+  category    String
+  description String
+  amount      Float
+  date        DateTime      @default(now())
+  paymentMethod PaymentMethodType?
+  saleId      String?
+  recurring   Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+}
+
+// ==================== WHATSAPP ====================
+
+model WhatsappMessage {
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointmentId String?
+  phone         String
+  message   String
+  type      WhatsappType
+  status    MessageStatus @default(PENDING)
+  sentAt    DateTime?
+  createdAt     DateTime      @default(now())
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String?
+  entityId  String?
+  metadata  String?
+  ip        String?
+  createdAt DateTime @default(now())
+}
+
+model WhatsappCampaign {
+  id        String         @id @default(cuid())
+  tenantId  String
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  message   String
+  status    CampaignStatus @default(DRAFT)
+  sentCount Int            @default(0)
+  scheduledAt DateTime?
+  sentAt    DateTime?
+  createdAt DateTime       @default(now())
+}
+
+// ==================== LOYALTY ====================
+
+model LoyaltyProgram {
+  id              String  @id @default(cuid())
+  tenantId        String  @unique
+  tenant          Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pointsPerReal   Float   @default(1)
+  cashbackPercent Float   @default(0)
+  punchCardSize   Int     @default(10) // 10 cortes = 1 grátis
+  active          Boolean @default(true)
+}
+
+model LoyaltyTransaction {
+  id        String       @id @default(cuid())
+  tenantId  String
+  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientId  String
+  client    Client       @relation(fields: [clientId], references: [id])
+  type      LoyaltyType
+  points    Int
+  description String
+  createdAt DateTime     @default(now())
+}
+
+// ==================== CLIENT SUBSCRIPTIONS ====================
+
+model ClientSubscription {
+  id        String                   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientId  String                   @unique
+  client    Client                   @relation(fields: [clientId], references: [id])
+  planName  String
+  price     Float
+  rules     String                   @default("{}") // JSON: max visits, services included
+  status    ClientSubscriptionStatus @default(ACTIVE)
+  startDate DateTime                 @default(now())
+  endDate   DateTime?
+  createdAt DateTime                 @default(now())
+}
+
+// ==================== REVIEWS ====================
+
+model Review {
+  id            String      @id @default(cuid())
+  tenantId      String
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientId      String
+  client        Client      @relation(fields: [clientId], references: [id])
+  appointmentId String      @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  rating        Int         // 1-5
+  comment       String?
+  createdAt     DateTime    @default(now())
+}
+
+// ==================== ENUMS ====================
+
+enum UserRole {
+  SUPER_ADMIN
+  TENANT_ADMIN
+  BARBER
+  RECEPTIONIST
+  CLIENT
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  PAST_DUE
+  TRIAL
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum ServiceCategory {
+  HAIRCUT
+  BEARD
+  HAIRCUT_BEARD
+  EYEBROW
+  PIGMENTATION
+  HYDRATION
+  OTHER
+}
+
+enum ProductCategory {
+  POMADE
+  SHAMPOO
+  GEL
+  RAZOR
+  BLADE
+  OTHER
+}
+
+enum EmployeeRole {
+  BARBER
+  RECEPTIONIST
+  MANAGER
+}
+
+enum AbsenceType {
+  DAY_OFF
+  VACATION
+  SICK
+  OTHER
+}
+
+enum MovementType {
+  IN
+  OUT
+  ADJUSTMENT
+}
+
+enum PaymentMethodType {
+  PIX
+  CASH
+  DEBIT
+  CREDIT
+  BOLETO
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum EntryType {
+  INCOME
+  EXPENSE
+}
+
+enum WhatsappMode {
+  SHOP
+  INDIVIDUAL
+}
+
+enum WhatsappType {
+  CONFIRMATION
+  REMINDER_24H
+  REMINDER_2H
+  THANK_YOU
+  MARKETING
+  CUSTOM
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+  CANCELLED
+}
+
+enum LoyaltyType {
+  EARN
+  REDEEM
+  CASHBACK
+  PUNCH
+}
+
+enum ClientSubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+}

@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run db:push
+      - run: npm run build -w @saas-barbearia/web
+        env:
+          DATABASE_URL: "file:./packages/database/prisma/dev.db"
+          JWT_SECRET: "ci-test-secret"
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"

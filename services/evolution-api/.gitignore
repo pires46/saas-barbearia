@@ -1,0 +1,8 @@
+# Evolution API (dados locais — não versionar)
+.env
+data/
+
+# Código-fonte clonado (opcional — use git pull em source/ para atualizar)
+source/node_modules/
+source/dist/
+source/.env

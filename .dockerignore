@@ -1,0 +1,25 @@
+node_modules
+**/node_modules
+.next
+**/.next
+.git
+.github
+*.md
+!README.md
+
+# Banco local (SQLite)
+packages/database/prisma/dev.db
+packages/database/prisma/*.db
+packages/database/prisma/*.db-journal
+
+# Evolution — código-fonte clonado (imagem Docker oficial)
+services/evolution-api/source
+
+# Mobile e artefatos de dev
+apps/mobile
+.turbo
+coverage
+*.log
+.env
+.env.*
+!.env.production.example

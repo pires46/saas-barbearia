@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "BarberSaaS",
+    "slug": "barber-saas",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "barbersaas",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#1a1a2e"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.barbersaas.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1a1a2e"
+      },
+      "package": "com.barbersaas.app"
+    },
+    "plugins": ["expo-router"]
+  }
+}
