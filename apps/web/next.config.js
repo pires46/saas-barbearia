@@ -17,6 +17,13 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts"],
   },
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      react: path.join(__dirname, "../../node_modules/react"),
+      "react-dom": path.join(__dirname, "../../node_modules/react-dom"),
+    };
+    return config;
+  },
 };
-
 module.exports = nextConfig;

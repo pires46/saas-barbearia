@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm install",
+  "installCommand": "npm install -w @saas-barbearia/web -w @saas-barbearia/database -w @saas-barbearia/shared",
   "buildCommand": "node scripts/prepare-prod-schema.js && npm run db:generate && npm run build -w @saas-barbearia/web",
   "outputDirectory": "apps/web/.next"
 }
