@@ -48,16 +48,14 @@ export async function ensureBusinessHours(tenantId: string) {
 
 export async function saveEmployeeSchedules(employeeId: string, schedules: ScheduleInput[]) {
   await prisma.employeeSchedule.deleteMany({ where: { employeeId } });
-  const active = schedules.filter((s) => !s.off);
-  if (active.length === 0) return [];
 
   await prisma.employeeSchedule.createMany({
-    data: active.map((s) => ({
+    data: schedules.map((s) => ({
       employeeId,
       dayOfWeek: s.dayOfWeek,
       startTime: s.startTime,
       endTime: s.endTime,
-      off: false,
+      off: s.off ?? false,
     })),
   });
 
@@ -78,6 +76,19 @@ export function schedulesToForm(schedules: { dayOfWeek: number; startTime: strin
   });
 }
 
+export function formatLocalDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function addMonthsToDate(dateStr: string, months: number): string {
+  const d = new Date(`${dateStr}T12:00:00`);
+  d.setMonth(d.getMonth() + months);
+  return formatLocalDate(d);
+}
+
 export function generateDatesInRange(startDate: string, endDate: string, weekdays: number[]): string[] {
   if (!startDate || !endDate || weekdays.length === 0) return [];
 
@@ -87,7 +98,7 @@ export function generateDatesInRange(startDate: string, endDate: string, weekday
 
   while (current <= end) {
     if (weekdays.includes(current.getDay())) {
-      dates.push(current.toISOString().slice(0, 10));
+      dates.push(formatLocalDate(current));
     }
     current.setDate(current.getDate() + 1);
   }

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { DAYS_OF_WEEK, formatCurrency, getInitials } from "@saas-barbearia/shared";
+import { addMonthsToDate, formatLocalDate, generateDatesInRange } from "@/lib/employee-schedules";
 import { Plus, Star, Calendar, Clock, Trash2, X, CheckCircle2 } from "lucide-react";
 
 type ScheduleRow = { dayOfWeek: number; startTime: string; endTime: string; off: boolean };
@@ -34,6 +35,8 @@ const WEEKDAY_PRESETS = [
   { label: "Todos sábados", days: [6] },
   { label: "Seg–Sex", days: [1, 2, 3, 4, 5] },
 ];
+
+const WEEKLY_OFF_PRESETS = WEEKDAY_PRESETS.filter((p) => p.label !== "Seg–Sex");
 
 function defaultScheduleRows(existing: Employee["schedules"]): ScheduleRow[] {
   const base = Array.from({ length: 7 }, (_, dayOfWeek) => ({
@@ -73,7 +76,7 @@ export default function FuncionariosPage() {
   const [scheduleSaved, setScheduleSaved] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", cpf: "", role: "BARBER" });
 
-  const [absenceMode, setAbsenceMode] = useState<"period" | "dates">("period");
+  const [absenceMode, setAbsenceMode] = useState<"weekly" | "period" | "dates">("weekly");
   const [absenceForm, setAbsenceForm] = useState({
     startDate: "",
     endDate: "",
@@ -96,13 +99,15 @@ export default function FuncionariosPage() {
     setScheduleSaved(false);
   };
 
-  const openAbsence = (empId: string) => {
+  const openAbsence = (emp: Employee) => {
     setShowSchedule(null);
-    setShowAbsence(empId);
-    setAbsenceMode("period");
+    setShowAbsence(emp.id);
+    setScheduleRows(defaultScheduleRows(emp.schedules));
+    setAbsenceMode("weekly");
+    const today = formatLocalDate(new Date());
     setAbsenceForm({
-      startDate: "",
-      endDate: "",
+      startDate: today,
+      endDate: addMonthsToDate(today, 12),
       absenceType: "DAY_OFF",
       reason: "",
       weekdays: [],
@@ -110,6 +115,27 @@ export default function FuncionariosPage() {
       newDate: "",
     });
     setAbsenceMessage(null);
+    setScheduleSaved(false);
+  };
+
+  const saveSchedules = async (employeeId: string) => {
+    setScheduleSaving(true);
+    setScheduleSaved(false);
+
+    const res = await fetch("/api/employees", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: employeeId, type: "schedules", schedules: scheduleRows }),
+    });
+
+    setScheduleSaving(false);
+    if (res.ok) {
+      setScheduleSaved(true);
+      load();
+      setTimeout(() => setScheduleSaved(false), 3000);
+      return true;
+    }
+    return false;
   };
 
   const toggleWeekday = (day: number) => {
@@ -121,8 +147,25 @@ export default function FuncionariosPage() {
     }));
   };
 
-  const applyPreset = (days: number[]) => {
-    setAbsenceForm((prev) => ({ ...prev, weekdays: days }));
+  const applyWeeklyPreset = (days: number[]) => {
+    setScheduleRows((prev) =>
+      prev.map((row) => ({
+        ...row,
+        off: days.includes(row.dayOfWeek) ? true : row.off,
+      }))
+    );
+    setAbsenceMessage(`Folga fixa marcada para: ${days.map((d) => DAYS_OF_WEEK[d]).join(", ")}. Clique em Salvar.`);
+  };
+
+  const applyPeriodPreset = (days: number[]) => {
+    const start = absenceForm.startDate || formatLocalDate(new Date());
+    const end = absenceForm.endDate || addMonthsToDate(start, 12);
+    setAbsenceForm((prev) => ({
+      ...prev,
+      weekdays: days,
+      startDate: start,
+      endDate: end,
+    }));
   };
 
   const addExtraDate = () => {
@@ -149,22 +192,84 @@ export default function FuncionariosPage() {
   const handleSaveSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!showSchedule) return;
-    setScheduleSaving(true);
-    setScheduleSaved(false);
-
-    const res = await fetch("/api/employees", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: showSchedule, type: "schedules", schedules: scheduleRows }),
-    });
-
-    setScheduleSaving(false);
-    if (res.ok) {
-      setScheduleSaved(true);
-      load();
-      setTimeout(() => setScheduleSaved(false), 3000);
-    }
+    await saveSchedules(showSchedule);
   };
+
+  const handleSaveWeeklyAbsence = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showAbsence) return;
+    const ok = await saveSchedules(showAbsence);
+    if (ok) setAbsenceMessage("Folgas fixas salvas! Válidas todos os dias marcados.");
+  };
+
+  const periodPreview =
+    absenceMode === "period" && absenceForm.startDate && absenceForm.endDate && absenceForm.weekdays.length > 0
+      ? generateDatesInRange(absenceForm.startDate, absenceForm.endDate, absenceForm.weekdays)
+      : [];
+
+  const renderScheduleEditor = (onSubmit: (e: React.FormEvent) => void, submitLabel: string) => (
+    <form onSubmit={onSubmit} className="space-y-2">
+      {scheduleRows.map((row, i) => (
+        <div key={row.dayOfWeek} className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="w-24 font-medium">{DAYS_OF_WEEK[row.dayOfWeek]}</span>
+          <label className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={row.off}
+              onChange={(e) => {
+                const next = [...scheduleRows];
+                next[i] = { ...row, off: e.target.checked };
+                setScheduleRows(next);
+              }}
+            />
+            Folga fixa
+          </label>
+          {!row.off && (
+            <>
+              <Input
+                type="time"
+                value={row.startTime}
+                onChange={(e) => {
+                  const next = [...scheduleRows];
+                  next[i] = { ...row, startTime: e.target.value };
+                  setScheduleRows(next);
+                }}
+                className="w-auto"
+              />
+              <span>às</span>
+              <Input
+                type="time"
+                value={row.endTime}
+                onChange={(e) => {
+                  const next = [...scheduleRows];
+                  next[i] = { ...row, endTime: e.target.value };
+                  setScheduleRows(next);
+                }}
+                className="w-auto"
+              />
+            </>
+          )}
+        </div>
+      ))}
+      <div className="flex flex-wrap gap-2 pt-1">
+        {WEEKLY_OFF_PRESETS.map((preset) => (
+          <Button key={preset.label} type="button" size="sm" variant="outline" onClick={() => applyWeeklyPreset(preset.days)}>
+            {preset.label}
+          </Button>
+        ))}
+      </div>
+      {(scheduleSaved || absenceMessage?.includes("Folgas fixas")) && (
+        <p className="flex items-center gap-2 text-sm text-green-500">
+          <CheckCircle2 className="h-4 w-4" /> Salvo com sucesso!
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2 pt-2">
+        <Button type="submit" variant="accent" disabled={scheduleSaving}>
+          {scheduleSaving ? "Salvando..." : submitLabel}
+        </Button>
+      </div>
+    </form>
+  );
 
   const handleAbsence = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,7 +288,7 @@ export default function FuncionariosPage() {
       payload.startDate = absenceForm.startDate;
       payload.endDate = absenceForm.endDate || absenceForm.startDate;
       payload.weekdays = absenceForm.weekdays;
-    } else {
+    } else if (absenceMode === "dates") {
       payload.dates = absenceForm.extraDates;
     }
 
@@ -253,61 +358,8 @@ export default function FuncionariosPage() {
           <p className="mb-4 text-sm text-muted-foreground">
             Defina em quais dias e horários este profissional atende.
           </p>
-          <form onSubmit={handleSaveSchedule} className="space-y-2">
-            {scheduleRows.map((row, i) => (
-              <div key={row.dayOfWeek} className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="w-24 font-medium">{DAYS_OF_WEEK[row.dayOfWeek]}</span>
-                <label className="flex items-center gap-1">
-                  <input
-                    type="checkbox"
-                    checked={row.off}
-                    onChange={(e) => {
-                      const next = [...scheduleRows];
-                      next[i] = { ...row, off: e.target.checked };
-                      setScheduleRows(next);
-                    }}
-                  />
-                  Folga fixa
-                </label>
-                {!row.off && (
-                  <>
-                    <Input
-                      type="time"
-                      value={row.startTime}
-                      onChange={(e) => {
-                        const next = [...scheduleRows];
-                        next[i] = { ...row, startTime: e.target.value };
-                        setScheduleRows(next);
-                      }}
-                      className="w-auto"
-                    />
-                    <span>às</span>
-                    <Input
-                      type="time"
-                      value={row.endTime}
-                      onChange={(e) => {
-                        const next = [...scheduleRows];
-                        next[i] = { ...row, endTime: e.target.value };
-                        setScheduleRows(next);
-                      }}
-                      className="w-auto"
-                    />
-                  </>
-                )}
-              </div>
-            ))}
-            {scheduleSaved && (
-              <p className="flex items-center gap-2 text-sm text-green-500">
-                <CheckCircle2 className="h-4 w-4" /> Horários salvos!
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2 pt-2">
-              <Button type="submit" variant="accent" disabled={scheduleSaving}>
-                {scheduleSaving ? "Salvando..." : "Salvar horários"}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setShowSchedule(null)}>Fechar</Button>
-            </div>
-          </form>
+          {renderScheduleEditor(handleSaveSchedule, "Salvar horários")}
+          <Button type="button" variant="outline" className="mt-2" onClick={() => setShowSchedule(null)}>Fechar</Button>
         </Card>
       )}
 
@@ -315,17 +367,25 @@ export default function FuncionariosPage() {
         <Card className="mb-6">
           <CardTitle className="mb-1">Folgas / Férias — {selectedEmployee.name}</CardTitle>
           <p className="mb-4 text-sm text-muted-foreground">
-            Registre vários dias de uma vez ou marque padrões como todos os domingos ou sábados.
+            Use <strong>Folga fixa semanal</strong> para domingos/sábados recorrentes (igual Horários). Use período para férias ou dias específicos.
           </p>
 
           <div className="mb-4 flex flex-wrap gap-2">
             <Button
               type="button"
               size="sm"
+              variant={absenceMode === "weekly" ? "accent" : "outline"}
+              onClick={() => setAbsenceMode("weekly")}
+            >
+              Folga fixa semanal
+            </Button>
+            <Button
+              type="button"
+              size="sm"
               variant={absenceMode === "period" ? "accent" : "outline"}
               onClick={() => setAbsenceMode("period")}
             >
-              Por período + dias da semana
+              Por período (férias)
             </Button>
             <Button
               type="button"
@@ -337,6 +397,14 @@ export default function FuncionariosPage() {
             </Button>
           </div>
 
+          {absenceMode === "weekly" ? (
+            <>
+              {renderScheduleEditor(handleSaveWeeklyAbsence, "Salvar folgas fixas")}
+              {absenceMessage && !absenceMessage.includes("Salvo") && (
+                <p className="mt-2 text-sm text-muted-foreground">{absenceMessage}</p>
+              )}
+            </>
+          ) : (
           <form onSubmit={handleAbsence} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <select
@@ -359,22 +427,28 @@ export default function FuncionariosPage() {
             {absenceMode === "period" ? (
               <>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Input
-                    type="date"
-                    value={absenceForm.startDate}
-                    onChange={(e) => setAbsenceForm({ ...absenceForm, startDate: e.target.value })}
-                    required
-                  />
-                  <Input
-                    type="date"
-                    value={absenceForm.endDate}
-                    onChange={(e) => setAbsenceForm({ ...absenceForm, endDate: e.target.value })}
-                    placeholder="Até (opcional = mesmo dia)"
-                  />
+                  <div>
+                    <label className="mb-1 block text-xs text-muted-foreground">De</label>
+                    <Input
+                      type="date"
+                      value={absenceForm.startDate}
+                      onChange={(e) => setAbsenceForm({ ...absenceForm, startDate: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-muted-foreground">Até</label>
+                    <Input
+                      type="date"
+                      value={absenceForm.endDate}
+                      onChange={(e) => setAbsenceForm({ ...absenceForm, endDate: e.target.value })}
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <p className="mb-2 text-sm font-medium">Dias da semana no período</p>
+                  <p className="mb-2 text-sm font-medium">Quais dias da semana nesse período?</p>
                   <div className="flex flex-wrap gap-2">
                     {DAYS_OF_WEEK.map((label, day) => (
                       <button
@@ -395,11 +469,19 @@ export default function FuncionariosPage() {
 
                 <div className="flex flex-wrap gap-2">
                   {WEEKDAY_PRESETS.map((preset) => (
-                    <Button key={preset.label} type="button" size="sm" variant="outline" onClick={() => applyPreset(preset.days)}>
+                    <Button key={preset.label} type="button" size="sm" variant="outline" onClick={() => applyPeriodPreset(preset.days)}>
                       {preset.label}
                     </Button>
                   ))}
                 </div>
+
+                {periodPreview.length > 0 && (
+                  <p className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-2 text-sm">
+                    Serão registrados <strong>{periodPreview.length}</strong> dia(s) entre{" "}
+                    {new Date(`${absenceForm.startDate}T12:00:00`).toLocaleDateString("pt-BR")} e{" "}
+                    {new Date(`${absenceForm.endDate}T12:00:00`).toLocaleDateString("pt-BR")}.
+                  </p>
+                )}
               </>
             ) : (
               <div>
@@ -447,13 +529,22 @@ export default function FuncionariosPage() {
               <Button type="submit" variant="accent" disabled={absenceSaving}>
                 {absenceSaving ? "Salvando..." : "Registrar folgas"}
               </Button>
-              <Button type="button" variant="outline" onClick={() => setShowAbsence(null)}>Fechar</Button>
             </div>
           </form>
+          )}
+
+          <Button type="button" variant="outline" className="mt-2" onClick={() => setShowAbsence(null)}>Fechar</Button>
+
+          {selectedEmployee.schedules.some((s) => s.off) && (
+            <div className="mt-4 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-sm">
+              <span className="font-medium">Folga fixa ativa: </span>
+              {selectedEmployee.schedules.filter((s) => s.off).map((s) => DAYS_OF_WEEK[s.dayOfWeek]).join(", ")}
+            </div>
+          )}
 
           {selectedEmployee.absences.length > 0 && (
             <div className="mt-6 border-t border-border pt-4">
-              <p className="mb-2 text-sm font-medium">Folgas registradas</p>
+              <p className="mb-2 text-sm font-medium">Folgas em datas específicas</p>
               <div className="max-h-48 space-y-2 overflow-y-auto">
                 {selectedEmployee.absences
                   .slice()
@@ -505,18 +596,25 @@ export default function FuncionariosPage() {
               {emp.schedules.length === 0 ? (
                 <span>Sem horários — clique em Horários para configurar</span>
               ) : (
-                emp.schedules.slice(0, 3).map((s) => (
-                  <span key={s.dayOfWeek} className="block">
-                    {DAYS_OF_WEEK[s.dayOfWeek].slice(0, 3)}: {s.startTime}–{s.endTime}
-                  </span>
-                ))
+                <>
+                  {emp.schedules.filter((s) => s.off).length > 0 && (
+                    <span className="block text-amber-500/90">
+                      Folga fixa: {emp.schedules.filter((s) => s.off).map((s) => DAYS_OF_WEEK[s.dayOfWeek].slice(0, 3)).join(", ")}
+                    </span>
+                  )}
+                  {emp.schedules.filter((s) => !s.off).slice(0, 3).map((s) => (
+                    <span key={s.dayOfWeek} className="block">
+                      {DAYS_OF_WEEK[s.dayOfWeek].slice(0, 3)}: {s.startTime}–{s.endTime}
+                    </span>
+                  ))}
+                </>
               )}
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Button size="sm" variant="outline" onClick={() => openSchedule(emp)}>
                 <Clock className="h-3 w-3" /> Horários
               </Button>
-              <Button size="sm" variant="outline" onClick={() => openAbsence(emp.id)}>
+              <Button size="sm" variant="outline" onClick={() => openAbsence(emp)}>
                 <Calendar className="h-3 w-3" /> Folgas
               </Button>
             </div>
