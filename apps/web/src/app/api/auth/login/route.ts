@@ -61,7 +61,14 @@ export async function POST(req: NextRequest) {
     await logAudit({ action: "LOGIN", userId: user.id, tenantId: user.tenantId, ip });
 
     return response;
-  } catch {
-    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+  } catch (err) {
+    console.error("[login]", err);
+    const message =
+      process.env.NODE_ENV === "development"
+        ? err instanceof Error
+          ? err.message
+          : "Erro interno"
+        : "Erro interno";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
