@@ -135,18 +135,17 @@ export function Sidebar() {
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           {nav.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
+            const tenantItem = !isAdmin ? (item as (typeof tenantNav)[number]) : null;
             const locked =
-              !isAdmin &&
-              "feature" in item &&
-              item.feature &&
-              !item.alwaysOn &&
-              !hasFeature(item.feature);
+              tenantItem?.feature &&
+              !tenantItem.alwaysOn &&
+              !hasFeature(tenantItem.feature);
 
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={(e) => !isAdmin && handleNavClick(e, item as (typeof tenantNav)[number])}
+                onClick={(e) => tenantItem && handleNavClick(e, tenantItem)}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                   active
