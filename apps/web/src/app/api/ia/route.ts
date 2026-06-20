@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireTenant } from "@/lib/api-auth";
 import { getAIPredictions, getAIPromotions } from "@/lib/services";
+import { isGeminiConfigured } from "@/lib/gemini";
 import { prisma } from "@saas-barbearia/database";
 
 export async function GET() {
@@ -18,5 +19,10 @@ export async function GET() {
     }),
   ]);
 
-  return NextResponse.json({ predictions, promotions, barberRanking });
+  return NextResponse.json({
+    predictions,
+    promotions,
+    barberRanking,
+    geminiConfigured: isGeminiConfigured(),
+  });
 }

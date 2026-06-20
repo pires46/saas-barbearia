@@ -1,5 +1,6 @@
 import { prisma } from "@saas-barbearia/database";
 import { startOfDay, endOfDay, startOfMonth, endOfMonth, subDays, subMonths } from "date-fns";
+import { generateGeminiJson, generateGeminiText, isGeminiConfigured } from "./gemini";
 
 export async function getTenantId(user: { role: string; tenantId?: string | null }) {
   if (user.role === "SUPER_ADMIN") return null;
@@ -232,11 +233,27 @@ export async function getAIPredictions(tenantId: string) {
   const busiestDay = Object.entries(dayCounts).sort((a, b) => b[1] - a[1])[0];
   const busiestHour = Object.entries(hourCounts).sort((a, b) => b[1] - a[1])[0];
 
+  const dayLabel = busiestDay ? days[Number(busiestDay[0])] : "Sábado";
+  const hourLabel = busiestHour ? `${busiestHour[0]}h - ${Number(busiestHour[0]) + 1}h` : "10h - 11h";
+
+  let suggestion = "Considere promoção de terça-feira para aumentar movimento nos horários ociosos.";
+  if (isGeminiConfigured() && appointments.length > 0) {
+    try {
+      suggestion = await generateGeminiText({
+        system: "Você é consultor de barbearias no Brasil. Respostas curtas e práticas.",
+        prompt: `Barbearia com ${appointments.length} agendamentos no último mês. Dia mais movimentado: ${dayLabel}. Horário de pico: ${hourLabel}. Dê UMA sugestão objetiva para aumentar faturamento ou ocupação.`,
+        temperature: 0.6,
+      });
+    } catch {
+      /* fallback */
+    }
+  }
+
   return {
-    busiestDay: busiestDay ? days[Number(busiestDay[0])] : "Sábado",
-    busiestHour: busiestHour ? `${busiestHour[0]}h - ${Number(busiestHour[0]) + 1}h` : "10h - 11h",
+    busiestDay: dayLabel,
+    busiestHour: hourLabel,
     totalAnalyzed: appointments.length,
-    suggestion: "Considere promoção de terça-feira para aumentar movimento nos horários ociosos.",
+    suggestion,
   };
 }
 
@@ -254,7 +271,7 @@ export async function getAIPromotions(tenantId: string) {
   const allProducts = await prisma.product.findMany({ where: { tenantId } });
   const lowStock = allProducts.filter((p) => p.stock <= p.minStock).length;
 
-  return [
+  const fallback = [
     {
       title: "Recuperar clientes inativos",
       description: `${inactiveClients} clientes sem visita há mais de 60 dias. Envie promoção de 15% off.`,
@@ -274,4 +291,20 @@ export async function getAIPromotions(tenantId: string) {
       type: "inventory",
     },
   ];
+
+  if (isGeminiConfigured()) {
+    try {
+      const aiPromos = await generateGeminiJson<
+        { title: string; description: string; impact: string; type: string }[]
+      >({
+        system: "Você é especialista em marketing para barbearias no Brasil.",
+        prompt: `Gere 3 sugestões de promoção com base em: ${inactiveClients} clientes inativos (+60 dias), ${lowStock} produtos com estoque baixo. JSON array: [{title, description, impact: Alto|Médio|Baixo, type: whatsapp|promotion|inventory}]`,
+      });
+      if (Array.isArray(aiPromos) && aiPromos.length > 0) return aiPromos.slice(0, 5);
+    } catch {
+      /* fallback */
+    }
+  }
+
+  return fallback;
 }

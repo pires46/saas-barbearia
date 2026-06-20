@@ -32,7 +32,7 @@ export default function AssinaturaPage() {
 
   if (!data) return null;
 
-  const currentFlags = data.tenant?.plan
+  const currentFlags: PlanFeatureFlags = data.tenant?.plan
     ? parsePlanFeatureFlags(data.tenant.plan.featureFlags, data.tenant.plan.slug)
     : parsePlanFeatureFlags("{}", "basico");
 

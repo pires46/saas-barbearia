@@ -89,6 +89,7 @@ model TenantSettings {
   reminder24h           Boolean @default(true)
   reminder2h            Boolean @default(true)
   thankYouMessage       Boolean @default(true)
+  whatsappBotEnabled    Boolean @default(true)
   aiPredictions         Boolean @default(true)
   aiPromotions          Boolean @default(true)
   qrCheckin             Boolean @default(true)

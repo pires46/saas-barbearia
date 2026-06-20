@@ -10,6 +10,7 @@ import {
   extractQrCode,
   extractConnectionState,
   logoutInstance,
+  setInstanceWebhook,
 } from "@/lib/evolution-api";
 import { resolveWhatsappInstance, getTenantSlug } from "@/lib/whatsapp-instances";
 import { getBarbersWhatsappStatus, upsertTenantSettings } from "@/lib/whatsapp-barbers";
@@ -103,6 +104,12 @@ export async function POST(req: NextRequest) {
       whatsappEnabled: true,
     });
 
+    try {
+      await setInstanceWebhook(instanceName);
+    } catch (err) {
+      console.warn("[whatsapp connect] webhook setup failed:", err);
+    }
+
     return NextResponse.json({
       instance: instanceName,
       qrCode,
@@ -177,7 +184,14 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.type === "settings") {
-    const allowed = ["confirmBooking", "reminder24h", "reminder2h", "thankYouMessage", "whatsappMode"];
+    const allowed = [
+      "confirmBooking",
+      "reminder24h",
+      "reminder2h",
+      "thankYouMessage",
+      "whatsappMode",
+      "whatsappBotEnabled",
+    ];
     const settingsData: Record<string, unknown> = {};
     for (const key of allowed) {
       if (key in body.settings) settingsData[key] = body.settings[key];

@@ -7,6 +7,7 @@ import {
   connectInstance,
   extractQrCode,
   logoutInstance,
+  setInstanceWebhook,
 } from "@/lib/evolution-api";
 import { buildEmployeeInstanceName, getTenantSlug } from "@/lib/whatsapp-instances";
 import { getBarbersWhatsappStatus, upsertTenantSettings } from "@/lib/whatsapp-barbers";
@@ -79,6 +80,12 @@ export async function POST(req: NextRequest) {
         where: { id: employee.id },
         data: { whatsappInstance: instanceName, whatsappEnabled: true },
       });
+
+      try {
+        await setInstanceWebhook(instanceName);
+      } catch (err) {
+        console.warn("[whatsapp/barbers connect] webhook setup failed:", err);
+      }
 
       return NextResponse.json({ instance: instanceName, qrCode, state: "connecting" });
     }

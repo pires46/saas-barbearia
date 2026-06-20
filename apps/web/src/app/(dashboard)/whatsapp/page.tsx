@@ -31,6 +31,7 @@ interface WhatsappData {
     reminder24h: boolean;
     reminder2h: boolean;
     thankYouMessage: boolean;
+    whatsappBotEnabled?: boolean;
     whatsappEnabled: boolean;
     whatsappMode?: "SHOP" | "INDIVIDUAL";
   } | null;
@@ -411,12 +412,13 @@ export default function WhatsappPage() {
         )}
       </Card>
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[
           { key: "confirmBooking", label: "Confirmação de agendamento" },
           { key: "reminder24h", label: "Lembrete 24h antes" },
           { key: "reminder2h", label: "Lembrete 2h antes" },
           { key: "thankYouMessage", label: "Agradecimento pós-atendimento" },
+          { key: "whatsappBotEnabled", label: "Bot IA no WhatsApp (Gemini)" },
         ].map((s) => (
           <Card key={s.key} className="flex items-center justify-between">
             <span className="text-sm">{s.label}</span>
