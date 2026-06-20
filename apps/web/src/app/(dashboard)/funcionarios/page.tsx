@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { formatCurrency, getInitials } from "@saas-barbearia/shared";
-import { Plus, Star, Calendar } from "lucide-react";
+import { DAYS_OF_WEEK, formatCurrency, getInitials } from "@saas-barbearia/shared";
+import { Plus, Star, Calendar, Clock, Trash2, X, CheckCircle2 } from "lucide-react";
+
+type ScheduleRow = { dayOfWeek: number; startTime: string; endTime: string; off: boolean };
 
 interface Employee {
   id: string;
@@ -22,18 +24,115 @@ interface Employee {
   monthRevenue: number;
   monthCommission: number;
   services: { service: { name: string } }[];
-  absences: { type: string; startDate: string; endDate: string }[];
+  schedules: { dayOfWeek: number; startTime: string; endTime: string; off?: boolean }[];
+  absences: { id: string; type: string; startDate: string; endDate: string; reason?: string | null }[];
+}
+
+const WEEKDAY_PRESETS = [
+  { label: "Fim de semana", days: [0, 6] },
+  { label: "Todos domingos", days: [0] },
+  { label: "Todos sábados", days: [6] },
+  { label: "Seg–Sex", days: [1, 2, 3, 4, 5] },
+];
+
+function defaultScheduleRows(existing: Employee["schedules"]): ScheduleRow[] {
+  const base = Array.from({ length: 7 }, (_, dayOfWeek) => ({
+    dayOfWeek,
+    startTime: "09:00",
+    endTime: dayOfWeek === 6 ? "18:00" : "19:00",
+    off: dayOfWeek === 0,
+  }));
+
+  if (existing.length === 0) return base;
+
+  return base.map((row) => {
+    const found = existing.find((s) => s.dayOfWeek === row.dayOfWeek);
+    if (!found) return { ...row, off: true };
+    return {
+      dayOfWeek: row.dayOfWeek,
+      startTime: found.startTime,
+      endTime: found.endTime,
+      off: found.off ?? false,
+    };
+  });
+}
+
+function absenceLabel(type: string) {
+  if (type === "VACATION") return "Férias";
+  if (type === "SICK") return "Atestado";
+  return "Folga";
 }
 
 export default function FuncionariosPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showSchedule, setShowSchedule] = useState<string | null>(null);
   const [showAbsence, setShowAbsence] = useState<string | null>(null);
+  const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>([]);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleSaved, setScheduleSaved] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", cpf: "", role: "BARBER" });
-  const [absenceForm, setAbsenceForm] = useState({ startDate: "", endDate: "", reason: "", absenceType: "DAY_OFF" });
+
+  const [absenceMode, setAbsenceMode] = useState<"period" | "dates">("period");
+  const [absenceForm, setAbsenceForm] = useState({
+    startDate: "",
+    endDate: "",
+    absenceType: "DAY_OFF",
+    reason: "",
+    weekdays: [] as number[],
+    extraDates: [] as string[],
+    newDate: "",
+  });
+  const [absenceSaving, setAbsenceSaving] = useState(false);
+  const [absenceMessage, setAbsenceMessage] = useState<string | null>(null);
 
   const load = () => fetch("/api/employees").then((r) => r.json()).then(setEmployees);
   useEffect(() => { load(); }, []);
+
+  const openSchedule = (emp: Employee) => {
+    setShowAbsence(null);
+    setShowSchedule(emp.id);
+    setScheduleRows(defaultScheduleRows(emp.schedules));
+    setScheduleSaved(false);
+  };
+
+  const openAbsence = (empId: string) => {
+    setShowSchedule(null);
+    setShowAbsence(empId);
+    setAbsenceMode("period");
+    setAbsenceForm({
+      startDate: "",
+      endDate: "",
+      absenceType: "DAY_OFF",
+      reason: "",
+      weekdays: [],
+      extraDates: [],
+      newDate: "",
+    });
+    setAbsenceMessage(null);
+  };
+
+  const toggleWeekday = (day: number) => {
+    setAbsenceForm((prev) => ({
+      ...prev,
+      weekdays: prev.weekdays.includes(day)
+        ? prev.weekdays.filter((d) => d !== day)
+        : [...prev.weekdays, day].sort(),
+    }));
+  };
+
+  const applyPreset = (days: number[]) => {
+    setAbsenceForm((prev) => ({ ...prev, weekdays: days }));
+  };
+
+  const addExtraDate = () => {
+    if (!absenceForm.newDate || absenceForm.extraDates.includes(absenceForm.newDate)) return;
+    setAbsenceForm((prev) => ({
+      ...prev,
+      extraDates: [...prev.extraDates, prev.newDate].sort(),
+      newDate: "",
+    }));
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,25 +142,85 @@ export default function FuncionariosPage() {
       body: JSON.stringify(form),
     });
     setShowForm(false);
+    setForm({ name: "", phone: "", cpf: "", role: "BARBER" });
     load();
+  };
+
+  const handleSaveSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showSchedule) return;
+    setScheduleSaving(true);
+    setScheduleSaved(false);
+
+    const res = await fetch("/api/employees", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: showSchedule, type: "schedules", schedules: scheduleRows }),
+    });
+
+    setScheduleSaving(false);
+    if (res.ok) {
+      setScheduleSaved(true);
+      load();
+      setTimeout(() => setScheduleSaved(false), 3000);
+    }
   };
 
   const handleAbsence = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!showAbsence) return;
+    setAbsenceSaving(true);
+    setAbsenceMessage(null);
+
+    const payload: Record<string, unknown> = {
+      id: showAbsence,
+      type: "absence",
+      absenceType: absenceForm.absenceType,
+      reason: absenceForm.reason,
+    };
+
+    if (absenceMode === "period") {
+      payload.startDate = absenceForm.startDate;
+      payload.endDate = absenceForm.endDate || absenceForm.startDate;
+      payload.weekdays = absenceForm.weekdays;
+    } else {
+      payload.dates = absenceForm.extraDates;
+    }
+
+    const res = await fetch("/api/employees", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    setAbsenceSaving(false);
+
+    if (!res.ok) {
+      setAbsenceMessage(data.error || "Erro ao registrar folgas");
+      return;
+    }
+
+    setAbsenceMessage(`${data.created} dia(s) registrado(s) com sucesso!`);
+    load();
+  };
+
+  const deleteAbsence = async (employeeId: string, absenceId: string) => {
+    if (!confirm("Remover esta folga?")) return;
     await fetch("/api/employees", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: showAbsence, type: "absence", ...absenceForm }),
+      body: JSON.stringify({ id: employeeId, type: "absence-delete", absenceId }),
     });
-    setShowAbsence(null);
     load();
   };
+
+  const selectedEmployee = employees.find((e) => e.id === showSchedule || e.id === showAbsence);
 
   return (
     <div>
       <PageHeader
         title="Funcionários"
-        description="Gestão de barbeiros e equipe"
+        description="Gestão de barbeiros, horários e folgas"
         actions={
           <Button variant="accent" onClick={() => setShowForm(true)}>
             <Plus className="h-4 w-4" /> Novo Funcionário
@@ -88,23 +247,235 @@ export default function FuncionariosPage() {
         </Card>
       )}
 
-      {showAbsence && (
+      {showSchedule && selectedEmployee && (
         <Card className="mb-6">
-          <CardTitle className="mb-3">Registrar Folga/Férias</CardTitle>
-          <form onSubmit={handleAbsence} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <select className="h-10 rounded-lg border border-border bg-background px-3 text-sm" value={absenceForm.absenceType} onChange={(e) => setAbsenceForm({ ...absenceForm, absenceType: e.target.value })}>
-              <option value="DAY_OFF">Folga</option>
-              <option value="VACATION">Férias</option>
-              <option value="SICK">Atestado</option>
-            </select>
-            <Input type="date" value={absenceForm.startDate} onChange={(e) => setAbsenceForm({ ...absenceForm, startDate: e.target.value })} required />
-            <Input type="date" value={absenceForm.endDate} onChange={(e) => setAbsenceForm({ ...absenceForm, endDate: e.target.value })} required />
-            <Input placeholder="Motivo" value={absenceForm.reason} onChange={(e) => setAbsenceForm({ ...absenceForm, reason: e.target.value })} />
-            <div className="flex gap-2">
-              <Button type="submit" variant="accent">Salvar</Button>
-              <Button type="button" variant="outline" onClick={() => setShowAbsence(null)}>Cancelar</Button>
+          <CardTitle className="mb-1">Horários — {selectedEmployee.name}</CardTitle>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Defina em quais dias e horários este profissional atende.
+          </p>
+          <form onSubmit={handleSaveSchedule} className="space-y-2">
+            {scheduleRows.map((row, i) => (
+              <div key={row.dayOfWeek} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="w-24 font-medium">{DAYS_OF_WEEK[row.dayOfWeek]}</span>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={row.off}
+                    onChange={(e) => {
+                      const next = [...scheduleRows];
+                      next[i] = { ...row, off: e.target.checked };
+                      setScheduleRows(next);
+                    }}
+                  />
+                  Folga fixa
+                </label>
+                {!row.off && (
+                  <>
+                    <Input
+                      type="time"
+                      value={row.startTime}
+                      onChange={(e) => {
+                        const next = [...scheduleRows];
+                        next[i] = { ...row, startTime: e.target.value };
+                        setScheduleRows(next);
+                      }}
+                      className="w-auto"
+                    />
+                    <span>às</span>
+                    <Input
+                      type="time"
+                      value={row.endTime}
+                      onChange={(e) => {
+                        const next = [...scheduleRows];
+                        next[i] = { ...row, endTime: e.target.value };
+                        setScheduleRows(next);
+                      }}
+                      className="w-auto"
+                    />
+                  </>
+                )}
+              </div>
+            ))}
+            {scheduleSaved && (
+              <p className="flex items-center gap-2 text-sm text-green-500">
+                <CheckCircle2 className="h-4 w-4" /> Horários salvos!
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button type="submit" variant="accent" disabled={scheduleSaving}>
+                {scheduleSaving ? "Salvando..." : "Salvar horários"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setShowSchedule(null)}>Fechar</Button>
             </div>
           </form>
+        </Card>
+      )}
+
+      {showAbsence && selectedEmployee && (
+        <Card className="mb-6">
+          <CardTitle className="mb-1">Folgas / Férias — {selectedEmployee.name}</CardTitle>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Registre vários dias de uma vez ou marque padrões como todos os domingos ou sábados.
+          </p>
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={absenceMode === "period" ? "accent" : "outline"}
+              onClick={() => setAbsenceMode("period")}
+            >
+              Por período + dias da semana
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={absenceMode === "dates" ? "accent" : "outline"}
+              onClick={() => setAbsenceMode("dates")}
+            >
+              Dias avulsos
+            </Button>
+          </div>
+
+          <form onSubmit={handleAbsence} className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <select
+                className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                value={absenceForm.absenceType}
+                onChange={(e) => setAbsenceForm({ ...absenceForm, absenceType: e.target.value })}
+              >
+                <option value="DAY_OFF">Folga</option>
+                <option value="VACATION">Férias</option>
+                <option value="SICK">Atestado</option>
+              </select>
+              <Input
+                placeholder="Motivo (opcional)"
+                value={absenceForm.reason}
+                onChange={(e) => setAbsenceForm({ ...absenceForm, reason: e.target.value })}
+                className="sm:col-span-2"
+              />
+            </div>
+
+            {absenceMode === "period" ? (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input
+                    type="date"
+                    value={absenceForm.startDate}
+                    onChange={(e) => setAbsenceForm({ ...absenceForm, startDate: e.target.value })}
+                    required
+                  />
+                  <Input
+                    type="date"
+                    value={absenceForm.endDate}
+                    onChange={(e) => setAbsenceForm({ ...absenceForm, endDate: e.target.value })}
+                    placeholder="Até (opcional = mesmo dia)"
+                  />
+                </div>
+
+                <div>
+                  <p className="mb-2 text-sm font-medium">Dias da semana no período</p>
+                  <div className="flex flex-wrap gap-2">
+                    {DAYS_OF_WEEK.map((label, day) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => toggleWeekday(day)}
+                        className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                          absenceForm.weekdays.includes(day)
+                            ? "border-accent bg-accent/10 text-accent"
+                            : "border-border hover:border-accent/40"
+                        }`}
+                      >
+                        {label.slice(0, 3)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {WEEKDAY_PRESETS.map((preset) => (
+                    <Button key={preset.label} type="button" size="sm" variant="outline" onClick={() => applyPreset(preset.days)}>
+                      {preset.label}
+                    </Button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div>
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    type="date"
+                    value={absenceForm.newDate}
+                    onChange={(e) => setAbsenceForm({ ...absenceForm, newDate: e.target.value })}
+                    className="w-auto"
+                  />
+                  <Button type="button" variant="outline" onClick={addExtraDate}>
+                    <Plus className="h-4 w-4" /> Adicionar dia
+                  </Button>
+                </div>
+                {absenceForm.extraDates.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {absenceForm.extraDates.map((date) => (
+                      <span key={date} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-xs">
+                        {new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR")}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAbsenceForm((prev) => ({
+                              ...prev,
+                              extraDates: prev.extraDates.filter((d) => d !== date),
+                            }))
+                          }
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {absenceMessage && (
+              <p className={`text-sm ${absenceMessage.includes("sucesso") ? "text-green-500" : "text-red-400"}`}>
+                {absenceMessage}
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" variant="accent" disabled={absenceSaving}>
+                {absenceSaving ? "Salvando..." : "Registrar folgas"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setShowAbsence(null)}>Fechar</Button>
+            </div>
+          </form>
+
+          {selectedEmployee.absences.length > 0 && (
+            <div className="mt-6 border-t border-border pt-4">
+              <p className="mb-2 text-sm font-medium">Folgas registradas</p>
+              <div className="max-h-48 space-y-2 overflow-y-auto">
+                {selectedEmployee.absences
+                  .slice()
+                  .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
+                  .map((abs) => (
+                    <div key={abs.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
+                      <span>
+                        {new Date(abs.startDate).toLocaleDateString("pt-BR")} — {absenceLabel(abs.type)}
+                        {abs.reason ? ` (${abs.reason})` : ""}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-red-400"
+                        onClick={() => deleteAbsence(selectedEmployee.id, abs.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -130,9 +501,25 @@ export default function FuncionariosPage() {
               <span>Comissão: {formatCurrency(emp.monthCommission)}</span>
               <span>Serv. Com.: {emp.serviceCommission}%</span>
             </div>
-            <Button size="sm" variant="outline" className="mt-3 w-full" onClick={() => setShowAbsence(emp.id)}>
-              <Calendar className="h-3 w-3" /> Folga / Férias
-            </Button>
+            <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+              {emp.schedules.length === 0 ? (
+                <span>Sem horários — clique em Horários para configurar</span>
+              ) : (
+                emp.schedules.slice(0, 3).map((s) => (
+                  <span key={s.dayOfWeek} className="block">
+                    {DAYS_OF_WEEK[s.dayOfWeek].slice(0, 3)}: {s.startTime}–{s.endTime}
+                  </span>
+                ))
+              )}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button size="sm" variant="outline" onClick={() => openSchedule(emp)}>
+                <Clock className="h-3 w-3" /> Horários
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => openAbsence(emp.id)}>
+                <Calendar className="h-3 w-3" /> Folgas
+              </Button>
+            </div>
           </Card>
         ))}
       </div>

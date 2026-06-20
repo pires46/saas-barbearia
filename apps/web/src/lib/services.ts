@@ -157,9 +157,10 @@ export async function getAvailableSlots(
     const schedule = emp.schedules.find((s) => s.dayOfWeek === dayOfWeek);
     if (!schedule || schedule.off) continue;
 
-    const isAbsent = emp.absences.some(
-      (a) => date >= a.startDate && date <= a.endDate
-    );
+    const isAbsent = emp.absences.some((a) => {
+      const day = startOfDay(date).getTime();
+      return day >= startOfDay(a.startDate).getTime() && day <= startOfDay(a.endDate).getTime();
+    });
     if (isAbsent) continue;
 
     const empAppointments = appointments.filter((a) => a.employeeId === emp.id);

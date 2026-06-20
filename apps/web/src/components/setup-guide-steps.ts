@@ -52,3 +52,14 @@ export const setupGuideSteps: SetupGuideStep[] = [
     icon: Globe,
   },
 ];
+
+export function getSetupStepIndex(href: string): number {
+  const path = href.split("?")[0];
+  const idx = setupGuideSteps.findIndex((s) => s.href.split("?")[0] === path);
+  return idx >= 0 ? idx : 0;
+}
+
+export function getNextSetupStep(href: string): SetupGuideStep | null {
+  const idx = getSetupStepIndex(href);
+  return setupGuideSteps[idx + 1] ?? null;
+}

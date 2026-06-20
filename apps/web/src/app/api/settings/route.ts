@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@saas-barbearia/database";
 import { requireTenant } from "@/lib/api-auth";
+import {
+  buildDefaultSchedules,
+  createEmployeeAbsences,
+  ensureBusinessHours,
+  saveEmployeeSchedules,
+} from "@/lib/employee-schedules";
 
 export async function GET() {
   const { error, tenantId } = await requireTenant();
@@ -9,7 +15,7 @@ export async function GET() {
 
   const [tenant, businessHours, settings] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: tenantId } }),
-    prisma.businessHour.findMany({ where: { tenantId }, orderBy: { dayOfWeek: "asc" } }),
+    ensureBusinessHours(tenantId),
     prisma.tenantSettings.findUnique({ where: { tenantId } }),
   ]);
 
