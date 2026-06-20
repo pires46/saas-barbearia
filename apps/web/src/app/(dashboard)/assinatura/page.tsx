@@ -1,20 +1,40 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
-import { formatCurrency } from "@saas-barbearia/shared";
-import { CreditCard, ExternalLink } from "lucide-react";
+import { PlanFeatureList, planFeatureLabel } from "@/components/plan-feature-list";
+import { formatCurrency, parsePlanFeatureFlags, type PlanFeatureFlags } from "@saas-barbearia/shared";
+import { CreditCard, ExternalLink, Lock } from "lucide-react";
+
+type PlanOption = {
+  id: string;
+  name: string;
+  price: number;
+  slug: string;
+  trialDays: number;
+  maxBarbers: number;
+  maxClients: number;
+  featureFlags?: string;
+  flags?: PlanFeatureFlags;
+};
 
 export default function AssinaturaPage() {
+  const searchParams = useSearchParams();
+  const lockedFeature = searchParams.get("locked");
   const [data, setData] = useState<any>(null);
 
   const load = () => fetch("/api/billing").then((r) => r.json()).then(setData);
   useEffect(() => { load(); }, []);
 
   if (!data) return null;
+
+  const currentFlags = data.tenant?.plan
+    ? parsePlanFeatureFlags(data.tenant.plan.featureFlags, data.tenant.plan.slug)
+    : parsePlanFeatureFlags("{}", "basico");
 
   const payInvoice = async (invoiceId: string) => {
     const res = await fetch("/api/billing", {
@@ -37,9 +57,26 @@ export default function AssinaturaPage() {
     load();
   };
 
+  const planFlags = (plan: PlanOption) =>
+    plan.flags ?? parsePlanFeatureFlags(plan.featureFlags, plan.slug);
+
   return (
     <div>
-      <PageHeader title="Assinatura" description="Plano, faturas e pagamentos" />
+      <PageHeader title="Assinatura" description="Plano, faturas e recursos disponíveis" />
+
+      {lockedFeature && (
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <div>
+            <p className="font-medium text-amber-200">
+              {planFeatureLabel(lockedFeature)} não está no seu plano atual
+            </p>
+            <p className="text-muted-foreground">
+              Faça upgrade abaixo para desbloquear este recurso.
+            </p>
+          </div>
+        </div>
+      )}
 
       {data.blocked && (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
@@ -53,6 +90,11 @@ export default function AssinaturaPage() {
           <p className="text-2xl font-bold">{data.tenant?.plan?.name}</p>
           <p className="text-muted-foreground">{formatCurrency(data.tenant?.plan?.price || 0)}/mês</p>
           <Badge className="mt-2">{data.subscription?.status || "—"}</Badge>
+          {data.subscription?.status === "TRIAL" && data.tenant?.plan?.trialDays && (
+            <p className="mt-2 text-xs text-accent">
+              Teste grátis de {data.tenant.plan.trialDays} dias
+            </p>
+          )}
         </Card>
         <Card>
           <CardTitle className="mb-2">Próxima cobrança</CardTitle>
@@ -68,19 +110,44 @@ export default function AssinaturaPage() {
       </div>
 
       <Card className="mb-6">
+        <CardTitle className="mb-2">Seu plano inclui</CardTitle>
+        <PlanFeatureList flags={currentFlags} slug={data.tenant?.plan?.slug} />
+      </Card>
+
+      <Card className="mb-6">
         <CardTitle className="mb-4">Trocar plano</CardTitle>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {data.plans?.map((plan: { id: string; name: string; price: number; slug: string }) => (
-            <button
-              key={plan.id}
-              type="button"
-              onClick={() => changePlan(plan.id)}
-              className={`rounded-lg border p-4 text-left ${data.tenant?.planId === plan.id ? "border-accent bg-accent/5" : "border-border"}`}
-            >
-              <p className="font-semibold">{plan.name}</p>
-              <p className="text-sm text-muted-foreground">{formatCurrency(plan.price)}/mês</p>
-            </button>
-          ))}
+        <div className="grid gap-4 lg:grid-cols-3">
+          {data.plans?.map((plan: PlanOption) => {
+            const flags = planFlags(plan);
+            const isCurrent = data.tenant?.planId === plan.id;
+
+            return (
+              <div
+                key={plan.id}
+                className={`rounded-lg border p-4 ${isCurrent ? "border-accent bg-accent/5" : "border-border"}`}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="font-semibold">{plan.name}</p>
+                  {isCurrent && <Badge variant="accent">Atual</Badge>}
+                </div>
+                <p className="text-lg font-bold text-accent">
+                  {formatCurrency(plan.price)}
+                  <span className="text-sm font-normal text-muted-foreground">/mês</span>
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Trial: {plan.trialDays ?? 14} dias · até {plan.maxBarbers} barbeiros
+                </p>
+                <div className="my-3">
+                  <PlanFeatureList flags={flags} slug={plan.slug} compact />
+                </div>
+                {!isCurrent && (
+                  <Button size="sm" variant="accent" className="w-full" onClick={() => changePlan(plan.id)}>
+                    Escolher {plan.name}
+                  </Button>
+                )}
+              </div>
+            );
+          })}
         </div>
       </Card>
 

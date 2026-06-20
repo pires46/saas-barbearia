@@ -17,7 +17,9 @@ model Plan {
   price       Float
   maxBarbers  Int      @default(3)
   maxClients  Int      @default(500)
-  features    String   @default("[]") // JSON array
+  features    String   @default("[]") // legado — labels
+  featureFlags String  @default("{}") // JSON: { agenda: true, whatsapp: false, ... }
+  trialDays   Int      @default(14) // 7, 15 ou 30
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

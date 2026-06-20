@@ -13,7 +13,6 @@ import {
   MessageCircle,
   Gift,
   Settings,
-  Globe,
   Brain,
   CreditCard,
   Menu,
@@ -21,28 +20,37 @@ import {
   LogOut,
   ChevronLeft,
   Building2,
+  Lock,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { usePlanFeatures } from "@/hooks/use-plan-features";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import type { PlanFeatureKey } from "@saas-barbearia/shared";
 
-const tenantNav = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/agenda", label: "Agenda", icon: Calendar },
-  { href: "/clientes", label: "Clientes", icon: Users },
-  { href: "/servicos", label: "Serviços", icon: Scissors },
-  { href: "/funcionarios", label: "Funcionários", icon: UserCog },
-  { href: "/financeiro", label: "Financeiro", icon: DollarSign },
-  { href: "/estoque", label: "Estoque", icon: Package },
-  { href: "/vendas", label: "Vendas", icon: ShoppingCart },
-  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { href: "/fidelidade", label: "Fidelidade", icon: Gift },
-  { href: "/ia", label: "IA & Insights", icon: Brain },
-  { href: "/assinatura", label: "Assinatura", icon: CreditCard },
-  { href: "/configuracoes", label: "Configurações", icon: Settings },
+const tenantNav: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  feature?: PlanFeatureKey;
+  alwaysOn?: boolean;
+}[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, feature: "dashboard", alwaysOn: true },
+  { href: "/agenda", label: "Agenda", icon: Calendar, feature: "agenda" },
+  { href: "/clientes", label: "Clientes", icon: Users, feature: "clientes" },
+  { href: "/servicos", label: "Serviços", icon: Scissors, feature: "servicos" },
+  { href: "/funcionarios", label: "Funcionários", icon: UserCog, feature: "funcionarios" },
+  { href: "/financeiro", label: "Financeiro", icon: DollarSign, feature: "financeiro" },
+  { href: "/estoque", label: "Estoque", icon: Package, feature: "estoque" },
+  { href: "/vendas", label: "Vendas", icon: ShoppingCart, feature: "vendas" },
+  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle, feature: "whatsapp" },
+  { href: "/fidelidade", label: "Fidelidade", icon: Gift, feature: "fidelidade" },
+  { href: "/ia", label: "IA & Insights", icon: Brain, feature: "ia" },
+  { href: "/assinatura", label: "Assinatura", icon: CreditCard, alwaysOn: true },
+  { href: "/configuracoes", label: "Configurações", icon: Settings, alwaysOn: true },
 ];
 
 const adminNav = [
@@ -54,10 +62,26 @@ const adminNav = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, logout } = useAuth();
+  const { hasFeature, data: planData } = usePlanFeatures();
   const [open, setOpen] = useState(false);
 
-  const nav = user?.role === "SUPER_ADMIN" ? adminNav : tenantNav;
+  const isAdmin = user?.role === "SUPER_ADMIN";
+  const nav = isAdmin ? adminNav : tenantNav;
+
+  const handleNavClick = (
+    e: React.MouseEvent,
+    item: (typeof tenantNav)[number]
+  ) => {
+    setOpen(false);
+    if (isAdmin || item.alwaysOn || !item.feature) return;
+
+    if (!hasFeature(item.feature)) {
+      e.preventDefault();
+      router.push(`/assinatura?locked=${item.feature}`);
+    }
+  };
 
   return (
     <>
@@ -82,32 +106,62 @@ export function Sidebar() {
         )}
       >
         <div className="flex h-16 items-center justify-between border-b border-border px-4">
-          <Link href={user?.role === "SUPER_ADMIN" ? "/admin" : "/dashboard"} className="flex items-center gap-2 font-bold">
+          <Link
+            href={isAdmin ? "/admin" : "/dashboard"}
+            className="flex items-center gap-2 font-bold"
+            onClick={() => setOpen(false)}
+          >
             <Scissors className="h-6 w-6 text-accent" />
-            <span>{user?.role === "SUPER_ADMIN" ? "BarberSaaS Admin" : "BarberSaaS"}</span>
+            <span>{isAdmin ? "BarberSaaS Admin" : "BarberSaaS"}</span>
           </Link>
           <button onClick={() => setOpen(false)} className="lg:hidden">
             <X className="h-5 w-5" />
           </button>
         </div>
 
+        {!isAdmin && planData?.plan && (
+          <div className="border-b border-border px-4 py-2">
+            <p className="text-xs text-muted-foreground">Plano</p>
+            <p className="text-sm font-medium truncate">{planData.plan.name}</p>
+            {planData.subscription?.status === "TRIAL" && planData.subscription.trialEndsAt && (
+              <p className="text-xs text-accent">
+                Trial até{" "}
+                {new Date(planData.subscription.trialEndsAt).toLocaleDateString("pt-BR")}
+              </p>
+            )}
+          </div>
+        )}
+
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           {nav.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
+            const locked =
+              !isAdmin &&
+              "feature" in item &&
+              item.feature &&
+              !item.alwaysOn &&
+              !hasFeature(item.feature);
+
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={() => setOpen(false)}
+                onClick={(e) => !isAdmin && handleNavClick(e, item as (typeof tenantNav)[number])}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                   active
                     ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    : locked
+                      ? "text-muted-foreground/70 hover:bg-secondary/50"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                 )}
               >
-                <item.icon className="h-4 w-4" />
-                {item.label}
+                {locked ? (
+                  <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <item.icon className="h-4 w-4 shrink-0" />
+                )}
+                <span className={cn(locked && "opacity-80")}>{item.label}</span>
               </Link>
             );
           })}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/layout/sidebar";
+import { SetupGuideLinks } from "@/components/setup-guide-links";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,8 @@ export default function ConfiguracoesPage() {
           </a>
         }
       />
+
+      <SetupGuideLinks />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

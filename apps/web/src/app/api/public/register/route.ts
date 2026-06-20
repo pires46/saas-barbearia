@@ -51,6 +51,12 @@ export async function POST(req: NextRequest) {
     }
 
     const plan = await prisma.plan.findUnique({ where: { id: planId } });
+    if (!plan) {
+      return NextResponse.json({ error: "Plano não encontrado" }, { status: 400 });
+    }
+
+    const trialMs = (plan.trialDays || 14) * 24 * 60 * 60 * 1000;
+    const trialEnd = new Date(Date.now() + trialMs);
 
     await prisma.subscription.create({
       data: {
@@ -58,16 +64,16 @@ export async function POST(req: NextRequest) {
         planId,
         status: "TRIAL",
         paymentMethod: "PIX",
-        nextBillingDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        nextBillingDate: trialEnd,
       },
     });
 
     await prisma.invoice.create({
       data: {
         tenantId: tenant.id,
-        amount: plan?.price || 79.9,
+        amount: plan.price,
         status: "PENDING",
-        dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        dueDate: trialEnd,
       },
     });
 

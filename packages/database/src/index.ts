@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 // Invalida cache do Prisma Client quando o schema muda (dev)
-const SCHEMA_HASH = "employee-whatsapp-v2-billing-audit";
+const SCHEMA_HASH = "plan-feature-flags-trial-v1";
 
 function createPrismaClient() {
   return new PrismaClient({

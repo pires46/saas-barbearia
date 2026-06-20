@@ -3,6 +3,7 @@ import { prisma } from "@saas-barbearia/database";
 import { requireTenant } from "@/lib/api-auth";
 import { isAsaasConfigured, createAsaasCustomer, createAsaasPayment } from "@/lib/asaas";
 import { logAudit } from "@/lib/audit";
+import { parsePlanFeatureFlags } from "@saas-barbearia/shared";
 
 export async function GET() {
   const { error, tenantId } = await requireTenant();
@@ -24,11 +25,16 @@ export async function GET() {
     prisma.plan.findMany({ where: { active: true }, orderBy: { price: "asc" } }),
   ]);
 
+  const plansWithFlags = plans.map((p) => ({
+    ...p,
+    flags: parsePlanFeatureFlags(p.featureFlags, p.slug),
+  }));
+
   return NextResponse.json({
     tenant,
     subscription,
     invoices,
-    plans,
+    plans: plansWithFlags,
     asaasConfigured: isAsaasConfigured(),
     blocked: tenant?.blocked,
   });

@@ -82,13 +82,17 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  const plan = await prisma.plan.findUnique({ where: { id: planId } });
+  const trialDays = plan?.trialDays ?? 14;
+  const trialEnd = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000);
+
   await prisma.subscription.create({
     data: {
       tenantId: tenant.id,
       planId,
-      status: "ACTIVE",
+      status: "TRIAL",
       paymentMethod: "PIX",
-      nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      nextBillingDate: trialEnd,
     },
   });
 
