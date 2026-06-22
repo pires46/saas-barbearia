@@ -1,4 +1,10 @@
 const DEFAULT_MODEL = process.env.GOOGLE_AI_MODEL || "gemini-2.0-flash";
+const MAX_INPUT_CHARS = 2000;
+
+export function sanitizeAiInput(input: unknown, maxLen = MAX_INPUT_CHARS): string {
+  if (typeof input !== "string") return "";
+  return input.trim().slice(0, maxLen);
+}
 
 export function isGeminiConfigured() {
   return Boolean(process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
@@ -21,12 +27,15 @@ export async function generateGeminiText(options: {
     throw new Error("GOOGLE_AI_API_KEY não configurada no servidor");
   }
 
+  const prompt = sanitizeAiInput(options.prompt, MAX_INPUT_CHARS);
+  const system = options.system ? sanitizeAiInput(options.system, 4000) : undefined;
+
   const contents: GeminiContent[] = [];
-  if (options.system) {
-    contents.push({ role: "user", parts: [{ text: options.system }] });
+  if (system) {
+    contents.push({ role: "user", parts: [{ text: system }] });
     contents.push({ role: "model", parts: [{ text: "Entendido. Seguirei essas instruções." }] });
   }
-  contents.push({ role: "user", parts: [{ text: options.prompt }] });
+  contents.push({ role: "user", parts: [{ text: prompt }] });
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
 

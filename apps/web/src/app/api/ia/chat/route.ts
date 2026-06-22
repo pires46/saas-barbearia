@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireTenant } from "@/lib/api-auth";
-import { generateGeminiText, isGeminiConfigured } from "@/lib/gemini";
+import { generateGeminiText, isGeminiConfigured, sanitizeAiInput } from "@/lib/gemini";
 import { prisma } from "@saas-barbearia/database";
+import { rateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
-  const { error, tenantId } = await requireTenant();
+  const { error, tenantId, session } = await requireTenant();
   if (error) return error;
   if (!tenantId) return NextResponse.json({ error: "Tenant required" }, { status: 400 });
+
+  const limited = rateLimit(`ia-chat:${tenantId}:${session?.id}`, 30, 60_000);
+  if (!limited.ok) {
+    return NextResponse.json({ error: "Limite de mensagens atingido. Aguarde." }, { status: 429 });
+  }
 
   if (!isGeminiConfigured()) {
     return NextResponse.json({ error: "Google AI não configurada no servidor" }, { status: 503 });
   }
 
   const { message } = (await req.json()) as { message?: string };
-  if (!message?.trim()) {
+  const safeMessage = sanitizeAiInput(message);
+  if (!safeMessage) {
     return NextResponse.json({ error: "Mensagem obrigatória" }, { status: 400 });
   }
 
@@ -52,7 +59,7 @@ Link público: ${process.env.NEXT_PUBLIC_APP_URL || ""}/b/${tenant?.slug || ""}
   try {
     const reply = await generateGeminiText({
       system: systemPrompt,
-      prompt: `${context}\n\nPergunta do gestor: ${message.trim()}`,
+      prompt: `${context}\n\nPergunta do gestor:\n<user_input>\n${safeMessage}\n</user_input>`,
       temperature: 0.65,
     });
     return NextResponse.json({ reply });

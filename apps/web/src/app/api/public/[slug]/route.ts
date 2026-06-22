@@ -27,7 +27,29 @@ export async function GET(
     return NextResponse.json({ error: "Barbearia não encontrada" }, { status: 404 });
   }
 
-  return NextResponse.json(tenant);
+  return NextResponse.json({
+    id: tenant.id,
+    name: tenant.name,
+    slug: tenant.slug,
+    description: tenant.description,
+    address: tenant.address,
+    phone: tenant.phone,
+    instagram: tenant.instagram,
+    spotifyUrl: tenant.spotifyUrl,
+    logo: tenant.logo,
+    coverImage: tenant.coverImage,
+    services: tenant.services,
+    employees: tenant.employees.map((e) => ({
+      id: e.id,
+      name: e.name,
+      bio: e.bio,
+      photo: e.photo,
+      rating: e.rating,
+      totalReviews: e.totalReviews,
+      services: e.services,
+    })),
+    businessHours: tenant.businessHours,
+  });
 }
 
 export async function POST(
@@ -75,8 +97,15 @@ export async function POST(
     });
   }
 
-  const service = await prisma.service.findUnique({ where: { id: data.serviceId } });
+  const service = await prisma.service.findFirst({
+    where: { id: data.serviceId, tenantId: tenant.id, active: true },
+  });
   if (!service) return NextResponse.json({ error: "Serviço não encontrado" }, { status: 404 });
+
+  const employee = await prisma.employee.findFirst({
+    where: { id: data.employeeId, tenantId: tenant.id, active: true, role: "BARBER" },
+  });
+  if (!employee) return NextResponse.json({ error: "Profissional não encontrado" }, { status: 404 });
 
   const [h, m] = data.time.split(":").map(Number);
   const start = new Date(data.date);
