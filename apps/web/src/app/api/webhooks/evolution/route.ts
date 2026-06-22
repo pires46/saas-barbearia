@@ -1,23 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleEvolutionIncomingMessage } from "@/lib/whatsapp-bot";
+import { timingSafeEqual } from "crypto";
 
-const WEBHOOK_TOKEN = process.env.EVOLUTION_WEBHOOK_TOKEN;
+function verifyWebhookToken(provided: string | null): boolean {
+  const expected = process.env.EVOLUTION_WEBHOOK_TOKEN;
+  if (!expected) return false;
+  if (!provided) return false;
+
+  try {
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
-    if (WEBHOOK_TOKEN) {
-      const token =
-        req.headers.get("apikey") ||
-        req.headers.get("x-evolution-token") ||
-        req.nextUrl.searchParams.get("token");
-      if (token !== WEBHOOK_TOKEN && token !== process.env.EVOLUTION_API_KEY) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
+    if (!process.env.EVOLUTION_WEBHOOK_TOKEN) {
+      console.error("[webhooks/evolution] EVOLUTION_WEBHOOK_TOKEN não configurado");
+      return NextResponse.json({ error: "Webhook não configurado" }, { status: 503 });
+    }
+
+    const token =
+      req.headers.get("x-evolution-token") ||
+      req.headers.get("apikey");
+
+    if (!verifyWebhookToken(token)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = (await req.json()) as Record<string, unknown>;
-    const result = await handleEvolutionIncomingMessage(body);
-    return NextResponse.json({ ok: true, ...result });
+    await handleEvolutionIncomingMessage(body);
+    return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[webhooks/evolution]", err);
     return NextResponse.json({ ok: false, error: "internal" }, { status: 500 });
@@ -25,5 +42,5 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: "ok", service: "BarberSaaS Evolution Webhook" });
+  return NextResponse.json({ status: "ok" });
 }

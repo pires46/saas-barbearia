@@ -1,10 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@saas-barbearia/database";
 import { logAudit } from "@/lib/audit";
+import { timingSafeEqual } from "crypto";
+
+function verifyAsaasToken(provided: string | null): boolean {
+  const expected = process.env.ASAAS_WEBHOOK_TOKEN;
+  if (!expected) return false;
+  if (!provided) return false;
+
+  try {
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(req: NextRequest) {
-  const token = process.env.ASAAS_WEBHOOK_TOKEN;
-  if (token && req.headers.get("asaas-access-token") !== token) {
+  if (!process.env.ASAAS_WEBHOOK_TOKEN) {
+    console.error("[webhooks/asaas] ASAAS_WEBHOOK_TOKEN não configurado");
+    return NextResponse.json({ error: "Webhook não configurado" }, { status: 503 });
+  }
+
+  if (!verifyAsaasToken(req.headers.get("asaas-access-token"))) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
