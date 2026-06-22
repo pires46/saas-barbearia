@@ -47,12 +47,15 @@ services:
       CRON_SECRET: ${CRON_SECRET:?Defina CRON_SECRET no .env.production}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?Defina NEXT_PUBLIC_APP_URL no .env.production}
       EVOLUTION_API_URL: ${EVOLUTION_API_URL:-http://evolution-api:8080}
-      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-barbersaas-evolution-key-change-me}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?Defina EVOLUTION_API_KEY no .env.production}
+      EVOLUTION_WEBHOOK_TOKEN: ${EVOLUTION_WEBHOOK_TOKEN:?Defina EVOLUTION_WEBHOOK_TOKEN no .env.production}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
+      GOOGLE_AI_MODEL: ${GOOGLE_AI_MODEL:-gemini-2.0-flash}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:?Defina ASAAS_WEBHOOK_TOKEN no .env.production}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-BarberSaaS <noreply@seudominio.com.br>}
       ASAAS_API_KEY: ${ASAAS_API_KEY:-}
       ASAAS_SANDBOX: ${ASAAS_SANDBOX:-false}
-      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:-}
       SEED_ON_START: ${SEED_ON_START:-false}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@barbersaas.com.br}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
