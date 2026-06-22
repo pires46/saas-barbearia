@@ -103,12 +103,16 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { error } = await requireTenant();
+  const { error, tenantId } = await requireTenant();
   if (error) return error;
+  if (!tenantId) return NextResponse.json({ error: "Tenant required" }, { status: 400 });
 
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
 
-  await prisma.financialEntry.delete({ where: { id } });
+  const existing = await prisma.financialEntry.findFirst({ where: { id, tenantId } });
+  if (!existing) return NextResponse.json({ error: "Lançamento não encontrado" }, { status: 404 });
+
+  await prisma.financialEntry.delete({ where: { id: existing.id } });
   return NextResponse.json({ success: true });
 }

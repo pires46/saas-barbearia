@@ -69,40 +69,49 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.type === "checkin") {
-    const appointment = await prisma.appointment.update({
-      where: { id: body.appointmentId },
+    const appointment = await prisma.appointment.findFirst({
+      where: { id: body.appointmentId, tenantId },
+    });
+    if (!appointment) return NextResponse.json({ error: "Agendamento não encontrado" }, { status: 404 });
+
+    const updated = await prisma.appointment.update({
+      where: { id: appointment.id },
       data: { checkedIn: true, checkedInAt: new Date(), status: "IN_PROGRESS" },
     });
-    return NextResponse.json(appointment);
+    return NextResponse.json(updated);
   }
 
   if (body.type === "review") {
+    const appointment = await prisma.appointment.findFirst({
+      where: { id: body.appointmentId, tenantId },
+    });
+    if (!appointment) return NextResponse.json({ error: "Agendamento não encontrado" }, { status: 404 });
+
+    const client = await prisma.client.findFirst({
+      where: { id: body.clientId, tenantId },
+    });
+    if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
+
     const review = await prisma.review.create({
       data: {
         tenantId,
-        clientId: body.clientId,
-        appointmentId: body.appointmentId,
+        clientId: client.id,
+        appointmentId: appointment.id,
         rating: body.rating,
         comment: body.comment,
       },
     });
 
-    const appointment = await prisma.appointment.findUnique({
-      where: { id: body.appointmentId },
+    const employee = await prisma.employee.findFirst({
+      where: { id: appointment.employeeId, tenantId },
     });
-    if (appointment) {
-      const employee = await prisma.employee.findUnique({
-        where: { id: appointment.employeeId },
+    if (employee) {
+      const newTotal = employee.totalReviews + 1;
+      const newRating = (employee.rating * employee.totalReviews + body.rating) / newTotal;
+      await prisma.employee.update({
+        where: { id: employee.id },
+        data: { rating: newRating, totalReviews: newTotal },
       });
-      if (employee) {
-        const newTotal = employee.totalReviews + 1;
-        const newRating =
-          (employee.rating * employee.totalReviews + body.rating) / newTotal;
-        await prisma.employee.update({
-          where: { id: employee.id },
-          data: { rating: newRating, totalReviews: newTotal },
-        });
-      }
     }
 
     return NextResponse.json(review, { status: 201 });

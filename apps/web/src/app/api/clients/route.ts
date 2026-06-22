@@ -95,19 +95,27 @@ export async function PATCH(req: NextRequest) {
 
   const body = await req.json();
   const { id, ...data } = body;
+  if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
   if (data.birthDate) data.birthDate = new Date(data.birthDate);
 
-  const client = await prisma.client.update({ where: { id }, data });
+  const existing = await prisma.client.findFirst({ where: { id, tenantId } });
+  if (!existing) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
+
+  const client = await prisma.client.update({ where: { id: existing.id }, data });
   return NextResponse.json(client);
 }
 
 export async function DELETE(req: NextRequest) {
   const { error, tenantId } = await requireTenant();
   if (error) return error;
+  if (!tenantId) return NextResponse.json({ error: "Tenant required" }, { status: 400 });
 
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
 
-  await prisma.client.update({ where: { id }, data: { active: false } });
+  const existing = await prisma.client.findFirst({ where: { id, tenantId } });
+  if (!existing) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
+
+  await prisma.client.update({ where: { id: existing.id }, data: { active: false } });
   return NextResponse.json({ success: true });
 }

@@ -28,6 +28,31 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { clientId, items, paymentMethod, discount, notes, appointmentId } = body;
 
+  if (clientId) {
+    const client = await prisma.client.findFirst({ where: { id: clientId, tenantId } });
+    if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
+  }
+
+  if (appointmentId) {
+    const apt = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId } });
+    if (!apt) return NextResponse.json({ error: "Agendamento não encontrado" }, { status: 404 });
+  }
+
+  for (const item of items) {
+    if (item.productId) {
+      const product = await prisma.product.findFirst({ where: { id: item.productId, tenantId } });
+      if (!product) return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
+    }
+    if (item.serviceId) {
+      const service = await prisma.service.findFirst({ where: { id: item.serviceId, tenantId } });
+      if (!service) return NextResponse.json({ error: "Serviço não encontrado" }, { status: 404 });
+    }
+    if (item.employeeId) {
+      const employee = await prisma.employee.findFirst({ where: { id: item.employeeId, tenantId } });
+      if (!employee) return NextResponse.json({ error: "Profissional não encontrado" }, { status: 404 });
+    }
+  }
+
   const subtotal = items.reduce(
     (sum: number, item: { unitPrice: number; quantity: number }) =>
       sum + item.unitPrice * item.quantity,

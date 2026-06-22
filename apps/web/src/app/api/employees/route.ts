@@ -69,16 +69,33 @@ export async function POST(req: NextRequest) {
   if (!tenantId) return NextResponse.json({ error: "Tenant required" }, { status: 400 });
 
   const body = await req.json();
-  const { serviceIds, schedules, ...data } = body;
+  const { serviceIds, schedules, ...raw } = body;
 
   const employee = await prisma.employee.create({
-    data: { tenantId, ...data },
+    data: {
+      tenantId,
+      name: raw.name,
+      phone: raw.phone,
+      cpf: raw.cpf,
+      email: raw.email,
+      role: raw.role || "BARBER",
+      bio: raw.bio,
+      photo: raw.photo,
+      serviceCommission: raw.serviceCommission ?? 50,
+      productCommission: raw.productCommission ?? 10,
+    },
   });
 
   if (serviceIds?.length) {
-    await prisma.employeeService.createMany({
-      data: serviceIds.map((sid: string) => ({ employeeId: employee.id, serviceId: sid })),
+    const validServices = await prisma.service.findMany({
+      where: { tenantId, id: { in: serviceIds }, active: true },
+      select: { id: true },
     });
+    if (validServices.length > 0) {
+      await prisma.employeeService.createMany({
+        data: validServices.map((s) => ({ employeeId: employee.id, serviceId: s.id })),
+      });
+    }
   }
 
   if (schedules?.length) {

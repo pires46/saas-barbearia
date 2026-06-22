@@ -61,8 +61,16 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { clientId, employeeId, serviceId, startTime, notes } = body;
 
-  const service = await prisma.service.findUnique({ where: { id: serviceId } });
+  const service = await prisma.service.findFirst({ where: { id: serviceId, tenantId } });
   if (!service) return NextResponse.json({ error: "Serviço não encontrado" }, { status: 404 });
+
+  const client = await prisma.client.findFirst({ where: { id: clientId, tenantId } });
+  if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
+
+  const employee = await prisma.employee.findFirst({
+    where: { id: employeeId, tenantId, active: true },
+  });
+  if (!employee) return NextResponse.json({ error: "Profissional não encontrado" }, { status: 404 });
 
   const start = new Date(startTime);
   const end = new Date(start);
@@ -105,11 +113,15 @@ export async function PATCH(req: NextRequest) {
 
   const updateData: Record<string, unknown> = {};
   if (status) updateData.status = status;
-  if (employeeId) updateData.employeeId = employeeId;
+  if (employeeId) {
+    const emp = await prisma.employee.findFirst({ where: { id: employeeId, tenantId } });
+    if (!emp) return NextResponse.json({ error: "Profissional não encontrado" }, { status: 404 });
+    updateData.employeeId = employeeId;
+  }
 
   if (startTime || serviceId) {
-    const svc = await prisma.service.findUnique({
-      where: { id: serviceId || existing.serviceId },
+    const svc = await prisma.service.findFirst({
+      where: { id: serviceId || existing.serviceId, tenantId },
     });
     if (svc) {
       const start = new Date(startTime || existing.startTime);
@@ -155,8 +167,11 @@ export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
 
+  const existing = await prisma.appointment.findFirst({ where: { id, tenantId } });
+  if (!existing) return NextResponse.json({ error: "Agendamento não encontrado" }, { status: 404 });
+
   await prisma.appointment.update({
-    where: { id },
+    where: { id: existing.id },
     data: { status: "CANCELLED" },
   });
 

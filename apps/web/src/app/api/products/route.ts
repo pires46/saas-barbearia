@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   if (body.type === "movement") {
-    const product = await prisma.product.findUnique({ where: { id: body.productId } });
+    const product = await prisma.product.findFirst({ where: { id: body.productId, tenantId } });
     if (!product) return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
 
     const newStock =
@@ -61,11 +61,17 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { error } = await requireTenant();
+  const { error, tenantId } = await requireTenant();
   if (error) return error;
+  if (!tenantId) return NextResponse.json({ error: "Tenant required" }, { status: 400 });
 
   const body = await req.json();
   const { id, ...data } = body;
-  const product = await prisma.product.update({ where: { id }, data });
+  if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
+
+  const existing = await prisma.product.findFirst({ where: { id, tenantId } });
+  if (!existing) return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
+
+  const product = await prisma.product.update({ where: { id: existing.id }, data });
   return NextResponse.json(product);
 }

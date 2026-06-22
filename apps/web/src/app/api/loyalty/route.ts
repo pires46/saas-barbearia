@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   if (body.type === "redeem") {
-    const client = await prisma.client.findUnique({ where: { id: body.clientId } });
+    const client = await prisma.client.findFirst({ where: { id: body.clientId, tenantId } });
     if (!client || client.loyaltyPoints < body.points) {
       return NextResponse.json({ error: "Pontos insuficientes" }, { status: 400 });
     }

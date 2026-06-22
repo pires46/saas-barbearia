@@ -110,7 +110,7 @@ export async function getAvailableSlots(
   serviceId: string,
   employeeId?: string
 ) {
-  const service = await prisma.service.findUnique({ where: { id: serviceId } });
+  const service = await prisma.service.findFirst({ where: { id: serviceId, tenantId } });
   if (!service) return [];
 
   const dayOfWeek = date.getDay();

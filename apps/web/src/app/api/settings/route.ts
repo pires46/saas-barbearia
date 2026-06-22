@@ -31,17 +31,20 @@ export async function PATCH(req: NextRequest) {
 
   if (body.type === "business-hours") {
     for (const hour of body.hours) {
+      const dayOfWeek = Number(hour.dayOfWeek);
+      if (Number.isNaN(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) continue;
+
       await prisma.businessHour.upsert({
-        where: { id: hour.id || `${tenantId}-${hour.dayOfWeek}` },
+        where: { id: `${tenantId}-${dayOfWeek}` },
         update: {
           openTime: hour.openTime,
           closeTime: hour.closeTime,
           closed: hour.closed,
         },
         create: {
-          id: `${tenantId}-${hour.dayOfWeek}`,
+          id: `${tenantId}-${dayOfWeek}`,
           tenantId,
-          dayOfWeek: hour.dayOfWeek,
+          dayOfWeek,
           openTime: hour.openTime,
           closeTime: hour.closeTime,
           closed: hour.closed,
@@ -51,9 +54,27 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true });
   }
 
+  const allowedFields = [
+    "name",
+    "email",
+    "phone",
+    "description",
+    "address",
+    "instagram",
+    "spotifyUrl",
+    "logo",
+    "coverImage",
+  ] as const;
+
+  const tenantData = body.tenant || body;
+  const safeData: Record<string, unknown> = {};
+  for (const key of allowedFields) {
+    if (key in tenantData) safeData[key] = tenantData[key];
+  }
+
   const tenant = await prisma.tenant.update({
     where: { id: tenantId },
-    data: body.tenant || body,
+    data: safeData,
   });
 
   return NextResponse.json(tenant);

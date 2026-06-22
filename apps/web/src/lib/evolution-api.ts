@@ -117,8 +117,7 @@ export async function ensureInstance(instanceName: string) {
 
 export function getEvolutionWebhookUrl() {
   const base = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
-  const token = process.env.EVOLUTION_WEBHOOK_TOKEN;
-  return token ? `${base}/api/webhooks/evolution?token=${encodeURIComponent(token)}` : `${base}/api/webhooks/evolution`;
+  return `${base}/api/webhooks/evolution`;
 }
 
 export async function setInstanceWebhook(instanceName: string) {
